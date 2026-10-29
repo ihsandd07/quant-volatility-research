@@ -67,6 +67,18 @@ Over the common 492-observation test period:
 
 Returns are historical backtest results, not predictions of future performance.
 
+**Portfolio Performance**
+
+![Out-of-sample portfolio equity curves](reports/portfolio_equity_curves.png)
+
+The chart compares the cumulative performance of the five portfolio strategies over the common out-of-sample test period, after modeled transaction costs.
+
+**Rolling Volatility Analysis**
+
+![Rolling volatility over time](reports/rolling_volatility.png)
+
+Rolling volatility illustrates how market risk changes over time and provides context for the volatility forecasting analysis.
+
 ### Robustness Checks
 
 - **Transaction costs:** Tested 5, 10, and 20 basis points. Strategy rankings remained unchanged across these scenarios.
