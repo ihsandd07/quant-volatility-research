@@ -108,15 +108,13 @@ def load_rf_forecasts(test_dates):
     return aligned
 
 
-def optimize_weights(history, method):
+def optimize_weights(history, method, risk_free_rate=0.0):
     """Optimize fully invested, long-only weights using historical data."""
     n_assets = history.shape[1]
     equal_weights = np.full(n_assets, 1.0 / n_assets)
 
     mean_returns = history.mean().to_numpy()
     covariance = history.cov().to_numpy()
-
-    # Small diagonal adjustment improves numerical stability.
     covariance = covariance + np.eye(n_assets) * 1e-10
 
     def portfolio_variance(weights):
@@ -134,8 +132,10 @@ def optimize_weights(history, method):
             variance = portfolio_variance(weights)
             if variance <= 1e-16:
                 return 1e6
+
             volatility = np.sqrt(variance)
-            return -float(weights @ mean_returns) / volatility
+            excess_return = float(weights @ mean_returns) - risk_free_rate
+            return -excess_return / volatility
 
     else:
         raise ValueError(f"Unknown optimization method: {method}")
@@ -151,10 +151,7 @@ def optimize_weights(history, method):
                 "fun": lambda weights: np.sum(weights) - 1.0,
             }
         ],
-        options={
-            "maxiter": 1000,
-            "ftol": 1e-12,
-        },
+        options={"maxiter": 1000, "ftol": 1e-12},
     )
 
     if not result.success:
@@ -167,7 +164,6 @@ def optimize_weights(history, method):
     if not np.isfinite(weights).all():
         raise RuntimeError(f"{method} produced non-finite weights.")
 
-    # Remove tiny numerical deviations while preserving full investment.
     weights = np.clip(weights, 0.0, MAX_WEIGHT)
     weights = weights / weights.sum()
 
@@ -175,8 +171,6 @@ def optimize_weights(history, method):
         raise RuntimeError(f"{method} violated the maximum-weight constraint.")
 
     return weights
-
-
 def get_weights(history, strategy, rf_variance=None):
     """Compute target weights using only information available at rebalance."""
     if strategy == "spy_vol_target":

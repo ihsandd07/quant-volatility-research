@@ -67,6 +67,19 @@ Over the common 492-observation test period:
 
 Returns are historical backtest results, not predictions of future performance.
 
+### Portfolio Performance Uncertainty
+
+A paired moving-block bootstrap was applied to the five strategies' daily net returns to assess sampling uncertainty.
+
+- 2,000 bootstrap replications using circular 10-trading-day blocks.
+- 95% percentile confidence intervals for annualized returns, annualized volatility, and Sharpe ratios.
+- Paired comparisons of Sharpe ratios using identical resampled date blocks across strategies.
+
+The estimated Sharpe ratios have wide confidence intervals. Nine of the ten pairwise Sharpe-difference intervals include zero. The minimum-variance versus SPY-volatility-target comparison is the sole exception, with an unadjusted 95% interval of approximately [0.112, 1.262]. This result should be interpreted cautiously because the ten pairwise comparisons are not adjusted for multiple testing.
+
+The bootstrap resamples already-generated portfolio returns; it does not repeat portfolio optimization or capture uncertainty in estimated portfolio weights. The results therefore do not establish a definitive ranking of the strategies.
+
+
 **Portfolio Performance**
 
 ![Out-of-sample portfolio equity curves](reports/portfolio_equity_curves.png)
@@ -91,7 +104,6 @@ quant-volatility-research/
 ├── data/
 │   ├── raw/
 │   └── processed/
-├── notebooks/
 ├── reports/
 ├── src/
 ├── tests/
@@ -113,6 +125,9 @@ Run the tests:
 
 ```bash
 python -m pytest -q
+
+python -m src.portfolio_bootstrap
+
 ```
 
 Run the forecasting and analysis scripts from the project root as appropriate. The portfolio backtest requires the generated walk-forward forecast file in `reports/`.
@@ -131,6 +146,9 @@ python -m src.lookback_sensitivity
 - Statistical tests did not establish significant forecasting-model differences after multiple-comparison adjustment.
 - Transaction costs are simplified and do not explicitly model spreads, market impact, liquidity, or execution delays.
 - Portfolio results depend on optimization constraints, historical estimation windows, and the selected ETF universe.
+
+- Bootstrap intervals are conditional on the realized portfolio return series and do not capture uncertainty from re-estimating portfolio weights.
+- Pairwise bootstrap comparisons are exploratory and are not adjusted for multiple comparisons.
 - The backtest assumes cash earns zero and the maximum-Sharpe optimizer uses a zero risk-free rate.
 
 ## Technology Stack
