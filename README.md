@@ -35,11 +35,11 @@ Five strategies are compared:
 
 - Equal-weight portfolio
 - Global minimum-variance portfolio
-- Maximum-Sharpe portfolio, assuming a zero risk-free rate
+- Maximum-Sharpe portfolio, using the daily 3-month U.S. Treasury yield as the risk-free rate
 - Historical-volatility-targeted equal-weight exposure
 - Random-Forest-SPY-volatility-targeted equal-weight exposure
 
-The optimizer is long-only, fully invested for the optimization-based allocations, and subject to a 40% maximum weight per ETF. The volatility-targeting strategies may hold part of the portfolio in cash, which earns zero in the backtest.
+The optimizer is long-only, fully invested for the optimization-based allocations, and subject to a 40% maximum weight per ETF. The volatility-targeting strategies may hold part of the portfolio in cash, which earns an approximate daily return derived from the 3-month U.S. Treasury yield.
 
 Portfolio weights are recalculated monthly using only historical observations available before each rebalance. Transaction costs are applied to the sum of absolute changes in risky-asset weights. The baseline transaction-cost rate is 10 basis points.
 
@@ -57,13 +57,13 @@ The results suggest that machine learning is competitive in this experiment, but
 
 Over the common 492-observation test period:
 
-| Strategy | Cumulative return | Annualized volatility | Sharpe ratio (risk-free rate = 0) | Maximum drawdown |
-|---|---:|---:|---:|---:|
-| Maximum Sharpe | 31.15% | 11.18% | 1.298 | -9.35% |
-| Minimum variance | 27.03% | 9.04% | 1.402 | -7.06% |
-| Equal weight | 25.12% | 12.10% | 1.009 | -10.68% |
-| Volatility target | 19.23% | 10.67% | 0.897 | -10.35% |
-| SPY volatility target | 12.39% | 8.56% | 0.742 | -6.80% |
+| Strategy | Cumulative return | Annualized return | Annualized volatility | Sharpe ratio | Maximum drawdown |
+|---|---:|---:|---:|---:|---:|
+| Minimum variance | 27.03% | 13.04% | 9.04% | 0.960 | -7.06% |
+| Maximum Sharpe | 31.87% | 15.22% | 12.20% | 0.896 | -9.79% |
+| Equal weight | 25.12% | 12.17% | 12.10% | 0.679 | -10.68% |
+| Volatility target | 20.57% | 10.06% | 10.67% | 0.577 | -10.34% |
+| SPY volatility target | 14.77% | 7.31% | 8.56% | 0.401 | -6.39% |
 
 Returns are historical backtest results, not predictions of future performance.
 
@@ -75,7 +75,7 @@ A paired moving-block bootstrap was applied to the five strategies' daily net re
 - 95% percentile confidence intervals for annualized returns, annualized volatility, and Sharpe ratios.
 - Paired comparisons of Sharpe ratios using identical resampled date blocks across strategies.
 
-The estimated Sharpe ratios have wide confidence intervals. Nine of the ten pairwise Sharpe-difference intervals include zero. The minimum-variance versus SPY-volatility-target comparison is the sole exception, with an unadjusted 95% interval of approximately [0.112, 1.262]. This result should be interpreted cautiously because the ten pairwise comparisons are not adjusted for multiple testing.
+The estimated Sharpe ratios have wide 95% confidence intervals, and all five individual intervals include zero. Nine of the ten pairwise Sharpe-difference intervals include zero. The minimum-variance versus SPY-volatility-target comparison is the sole exception, with an unadjusted 95% interval of approximately [0.019, 1.133]. This result is exploratory because the ten pairwise comparisons are not adjusted for multiple testing.
 
 The bootstrap resamples already-generated portfolio returns; it does not repeat portfolio optimization or capture uncertainty in estimated portfolio weights. The results therefore do not establish a definitive ranking of the strategies.
 
@@ -149,7 +149,7 @@ python -m src.lookback_sensitivity
 
 - Bootstrap intervals are conditional on the realized portfolio return series and do not capture uncertainty from re-estimating portfolio weights.
 - Pairwise bootstrap comparisons are exploratory and are not adjusted for multiple comparisons.
-- The backtest assumes cash earns zero and the maximum-Sharpe optimizer uses a zero risk-free rate.
+- Cash returns and the optimizer's risk-free rate are approximated using the 3-month U.S. Treasury yield (FRED DGS3MO), converted to daily returns using 252 trading days and lagged by one calendar day. This is a proxy rather than the realized return of a specific cash instrument.
 
 ## Technology Stack
 

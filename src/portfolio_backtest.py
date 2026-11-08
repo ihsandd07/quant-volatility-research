@@ -4,8 +4,8 @@
 Strategies:
 1. Equal weight
 2. Global minimum variance
-3. Maximum Sharpe (zero risk-free rate)
-4. Historical-volatility-targeted minimum variance
+3. Maximum Sharpe (Treasury-based risk-free rate)
+4. Historical-volatility-targeted equal-weight exposure
 5. Random-Forest-SPY-volatility-targeted equal weight
 
 The SPY forecast strategy uses a one-step-ahead SPY variance forecast as
@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+
+from src.risk_free import load_risk_free_returns
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -171,7 +173,14 @@ def optimize_weights(history, method, risk_free_rate=0.0):
         raise RuntimeError(f"{method} violated the maximum-weight constraint.")
 
     return weights
-def get_weights(history, strategy, rf_variance=None):
+
+
+def get_weights(
+    history,
+    strategy,
+    rf_variance=None,
+    risk_free_rate=0.0,
+):
     """Compute target weights using only information available at rebalance."""
     if strategy == "spy_vol_target":
         if (
@@ -206,10 +215,14 @@ def get_weights(history, strategy, rf_variance=None):
             else 1.0
         )
 
-        # Any uninvested fraction is held as cash earning 0%.
+        # Any uninvested fraction is held as cash earning the Treasury rate.
         return weights * exposure
 
-    return optimize_weights(history, strategy)
+    return optimize_weights(
+        history,
+        strategy,
+        risk_free_rate=risk_free_rate,
+    )
 
 
 def backtest(
@@ -225,6 +238,7 @@ def backtest(
         raise ValueError("Test period contains no observations.")
 
     rf_forecasts = load_rf_forecasts(test_returns.index)
+    risk_free_returns = load_risk_free_returns(test_returns.index)
 
     daily_results = {}
     weight_records = []
@@ -241,6 +255,7 @@ def backtest(
             rebalance = current_month != previous_month
 
             asset_returns = realized_returns.to_numpy(dtype=float)
+            risk_free_return = float(risk_free_returns.loc[date])
             transaction_cost = 0.0
             turnover = 0.0
 
@@ -263,6 +278,7 @@ def backtest(
                     history,
                     strategy,
                     rf_variance=rf_variance,
+                    risk_free_rate=risk_free_return,
                 )
 
                 # Current holdings are measured before today's rebalance.
@@ -303,9 +319,12 @@ def backtest(
                 weight_records.append(record)
                 previous_month = current_month
 
-            # Portfolio return before trading costs: risky assets earn their
-            # realized returns; cash earns zero.
-            gross_return = float(actual_weights @ asset_returns)
+            # Risky assets earn realized returns; uninvested cash earns
+            # the daily Treasury-rate proxy.
+            gross_return = float(
+                actual_weights @ asset_returns
+                + cash_weight * risk_free_return
+            )
 
             # Transaction costs are charged against pre-return portfolio wealth.
             net_return = (1.0 - transaction_cost) * (1.0 + gross_return) - 1.0
@@ -316,13 +335,14 @@ def backtest(
                 "gross_return": gross_return,
                 "transaction_cost": transaction_cost,
                 "net_return": net_return,
+                "risk_free_return": risk_free_return,
                 "turnover": turnover,
                 "risky_exposure": float(actual_weights.sum()),
                 "cash_weight": float(cash_weight),
             })
 
-            # Market returns change the value of each risky holding. Cash
-            # retains its value. Normalize by post-market, post-cost wealth.
+            # Market returns change risky holdings; cash earns the Treasury
+            # return. Normalize by post-market, post-cost wealth.
             post_cost_wealth = 1.0 - transaction_cost
             post_market_wealth = post_cost_wealth * (1.0 + gross_return)
 
@@ -334,7 +354,9 @@ def backtest(
             risky_values = (
                 actual_weights * post_cost_wealth * (1.0 + asset_returns)
             )
-            cash_value = cash_weight * post_cost_wealth
+            cash_value = (
+                cash_weight * post_cost_wealth * (1.0 + risk_free_return)
+            )
 
             actual_weights = risky_values / post_market_wealth
             cash_weight = cash_value / post_market_wealth
@@ -357,6 +379,8 @@ def calculate_metrics(daily_results):
         drawdown = equity / running_peak - 1.0
 
         daily_std = net.std(ddof=1)
+        excess_returns = net - frame["risk_free_return"]
+        excess_std = excess_returns.std(ddof=1)
         annualized_vol = daily_std * np.sqrt(TRADING_DAYS)
 
         annualized_return = (
@@ -364,8 +388,8 @@ def calculate_metrics(daily_results):
         )
 
         sharpe = (
-            net.mean() / daily_std * np.sqrt(TRADING_DAYS)
-            if daily_std > 0
+            excess_returns.mean() / excess_std * np.sqrt(TRADING_DAYS)
+            if excess_std > 0
             else np.nan
         )
 
@@ -378,7 +402,7 @@ def calculate_metrics(daily_results):
             "cumulative_return": equity.iloc[-1] - 1.0,
             "annualized_return": annualized_return,
             "annualized_volatility": annualized_vol,
-            "sharpe_ratio_rf0": sharpe,
+            "sharpe_ratio": sharpe,
             "maximum_drawdown": drawdown.min(),
             "average_daily_transaction_cost": frame[
                 "transaction_cost"
@@ -392,7 +416,7 @@ def calculate_metrics(daily_results):
         })
 
     return pd.DataFrame(rows).sort_values(
-        "sharpe_ratio_rf0",
+        "sharpe_ratio",
         ascending=False,
     )
 
@@ -408,6 +432,7 @@ def save_outputs(daily_results, weights, metrics):
                     "gross_return",
                     "transaction_cost",
                     "net_return",
+                    "risk_free_return",
                     "turnover",
                     "risky_exposure",
                     "cash_weight",

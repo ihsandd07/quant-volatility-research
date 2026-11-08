@@ -18,26 +18,32 @@ CONFIDENCE_LEVEL = 0.95
 RANDOM_SEED = 42
 
 
-def performance_metrics(returns):
-    """Match the annualization conventions in portfolio_backtest.py."""
+def performance_metrics(returns, risk_free_returns):
+    """Calculate performance metrics using excess returns for Sharpe."""
     returns = np.asarray(returns, dtype=float)
+    risk_free_returns = np.asarray(risk_free_returns, dtype=float)
+
+    if len(returns) != len(risk_free_returns):
+        raise ValueError("Returns and risk-free series must have equal lengths.")
 
     equity = np.cumprod(1.0 + returns)
     daily_std = returns.std(ddof=1)
+    excess_returns = returns - risk_free_returns
+    excess_std = excess_returns.std(ddof=1)
 
     annualized_return = equity[-1] ** (TRADING_DAYS / len(returns)) - 1.0
     annualized_volatility = daily_std * np.sqrt(TRADING_DAYS)
 
     sharpe = (
-        returns.mean() / daily_std * np.sqrt(TRADING_DAYS)
-        if daily_std > 0
+        excess_returns.mean() / excess_std * np.sqrt(TRADING_DAYS)
+        if excess_std > 0
         else np.nan
     )
 
     return {
         "annualized_return": annualized_return,
         "annualized_volatility": annualized_volatility,
-        "sharpe_ratio_rf0": sharpe,
+        "sharpe_ratio": sharpe,
     }
 
 
@@ -70,13 +76,36 @@ def main():
     returns = pd.DataFrame({
         strategy: daily[(strategy, "net_return")]
         for strategy in strategies
-    }).dropna()
+    })
+
+    risk_free = daily[(strategies[0], "risk_free_return")]
+
+    # Confirm the same Treasury series was saved for every strategy.
+    for strategy in strategies[1:]:
+        other = daily[(strategy, "risk_free_return")]
+        if not np.allclose(
+            risk_free.to_numpy(),
+            other.to_numpy(),
+            equal_nan=True,
+        ):
+            raise ValueError("Risk-free returns differ across strategies.")
+
+    combined = pd.concat(
+        [returns, risk_free.rename("risk_free_return")],
+        axis=1,
+    ).dropna()
+
+    returns = combined[strategies]
+    risk_free = combined["risk_free_return"]
 
     if len(returns) < BLOCK_LENGTH:
         raise ValueError("Not enough observations for the selected block length.")
 
     if not np.isfinite(returns.to_numpy()).all():
-        raise ValueError("Returns contain non-finite values.")
+        raise ValueError("Portfolio returns contain non-finite values.")
+
+    if not np.isfinite(risk_free.to_numpy()).all():
+        raise ValueError("Risk-free returns contain non-finite values.")
 
     n = len(returns)
     rng = np.random.default_rng(RANDOM_SEED)
@@ -84,7 +113,7 @@ def main():
     metric_names = [
         "annualized_return",
         "annualized_volatility",
-        "sharpe_ratio_rf0",
+        "sharpe_ratio",
     ]
 
     bootstrap_values = {
@@ -100,16 +129,20 @@ def main():
     for _ in range(N_BOOTSTRAP):
         indices = moving_block_indices(n, BLOCK_LENGTH, rng)
         sample = returns.iloc[indices]
+        sample_rf = risk_free.iloc[indices].to_numpy()
 
         sample_sharpes = {}
 
         for strategy in strategies:
-            metrics = performance_metrics(sample[strategy].to_numpy())
+            metrics = performance_metrics(
+                sample[strategy].to_numpy(),
+                sample_rf,
+            )
 
             for metric in metric_names:
                 bootstrap_values[strategy][metric].append(metrics[metric])
 
-            sample_sharpes[strategy] = metrics["sharpe_ratio_rf0"]
+            sample_sharpes[strategy] = metrics["sharpe_ratio"]
 
         for a, b in combinations(strategies, 2):
             key = f"{a}_minus_{b}"

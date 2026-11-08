@@ -74,7 +74,7 @@ def main():
         "cumulative_return",
         "annualized_return",
         "annualized_volatility",
-        "sharpe_ratio_rf0",
+        "sharpe_ratio",
         "maximum_drawdown",
         "total_transaction_cost",
     ]
